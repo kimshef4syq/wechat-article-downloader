@@ -1,6 +1,9 @@
 const puppeteer = require('puppeteer');
 const config = require('./config');
 
+// 延迟函数（替代已废弃的 waitForTimeout）
+const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
 class WeChatClient {
   constructor() {
     this.browser = null;
@@ -78,7 +81,7 @@ class WeChatClient {
     );
 
     // 等待页面加载完成
-    await this.page.waitForTimeout(2000);
+    await delay(2000);
 
     // 获取cookies用于API请求
     const cookies = await this.page.cookies();
@@ -150,7 +153,7 @@ class WeChatClient {
       begin += perPage;
 
       // 添加延迟避免请求过快
-      await this.page.waitForTimeout(1000);
+      await delay(1000);
     }
 
     console.log(`共找到 ${articles.length} 篇文章`);
