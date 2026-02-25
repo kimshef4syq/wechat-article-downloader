@@ -18,7 +18,11 @@
       "Bash(git add -A && git commit -m \"fix: 改进token提取，避免匹配错误码\" && git push)",
       "Bash(git add -A && git commit -m \"fix: 增加从cookies获取token的方式\" && git push)",
       "Bash(git add -A && git commit -m \"fix: 改进登录检测，确保会话建立完成\" && git push)",
-      "Bash(git add -A && git commit -m \"$\\(cat <<'EOF'\nfeat: 支持保存和恢复登录会话\n\n- 登录成功后保存cookies和token到本地文件\n- download命令自动尝试恢复已保存的会话\n- 会话过期时提示重新登录\n- 无需每次下载都重新扫码\n\nCo-Authored-By: Claude Opus 4.6 <noreply@anthropic.com>\nEOF\n\\)\" && git push)"
+      "Bash(git add -A && git commit -m \"$\\(cat <<'EOF'\nfeat: 支持保存和恢复登录会话\n\n- 登录成功后保存cookies和token到本地文件\n- download命令自动尝试恢复已保存的会话\n- 会话过期时提示重新登录\n- 无需每次下载都重新扫码\n\nCo-Authored-By: Claude Opus 4.6 <noreply@anthropic.com>\nEOF\n\\)\" && git push)",
+      "Bash(node /Users/spic005/Documents/cc/tap2/src/index.js download AIPPT -n 5)",
+      "Bash(git add -A && git status)",
+      "Bash(node /Users/spic005/Documents/cc/tap2/src/index.js download AI算法与图像处理 -n 5)",
+      "Bash(git add -A && git commit -m \"$\\(cat <<'EOF'\nfeat: 添加交互式模式，保持会话在线\n\n- 直接运行进入交互模式\n- 登录一次后可连续下载多个公众号\n- 支持命令: login, download, list, exit\n- 浏览器保持打开，无需重复扫码\n\nCo-Authored-By: Claude Opus 4.6 <noreply@anthropic.com>\nEOF\n\\)\" && git push)"
     ]
   }
 }
