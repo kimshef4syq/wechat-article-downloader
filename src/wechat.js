@@ -81,21 +81,58 @@ class WeChatClient {
     );
 
     // 等待页面加载完成
-    await delay(2000);
+    await delay(3000);
 
-    // 获取cookies用于API请求
-    const cookies = await this.page.cookies();
-    const cookieString = cookies.map((c) => `${c.name}=${c.value}`).join('; ');
+    // 尝试多种方式获取token
+    let token = '';
 
-    // 从URL获取token
+    // 方式1: 从URL获取
     const url = this.page.url();
-    const tokenMatch = url.match(/token=(\d+)/);
-    const token = tokenMatch ? tokenMatch[1] : '';
+    let tokenMatch = url.match(/token=(\d+)/);
+    if (tokenMatch) {
+      token = tokenMatch[1];
+    }
+
+    // 方式2: 从页面window对象获取
+    if (!token) {
+      token = await this.page.evaluate(() => {
+        // 尝试从window对象获取token
+        if (window.wx && window.wx.data && window.wx.data.t) {
+          return window.wx.data.t;
+        }
+        if (window.token) {
+          return window.token;
+        }
+        // 尝试从页面内容获取
+        const scripts = document.querySelectorAll('script');
+        for (const script of scripts) {
+          const text = script.textContent || '';
+          const match = text.match(/["']token["']\s*:\s*["']?(\d+)/);
+          if (match) return match[1];
+          const match2 = text.match(/t\s*=\s*["'](\d+)/);
+          if (match2) return match2[1];
+        }
+        return '';
+      });
+    }
+
+    // 方式3: 从当前页面URL的query string获取（重定向后）
+    if (!token) {
+      const currentUrl = this.page.url();
+      tokenMatch = currentUrl.match(/token=([^&]+)/);
+      if (tokenMatch) {
+        token = tokenMatch[1];
+      }
+    }
 
     if (!token) {
+      // 打印调试信息
+      console.log('当前URL:', this.page.url());
+      console.log('页面标题:', await this.page.title());
       throw new Error('无法获取token，请确保已登录');
     }
 
+    console.log('Token获取成功:', token);
     console.log('正在搜索公众号...');
 
     // 搜索公众号
