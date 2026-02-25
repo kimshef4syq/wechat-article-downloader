@@ -86,50 +86,58 @@ class WeChatClient {
     // 从URL或页面获取token
     let token = '';
 
-    // 方式1: 从URL获取（更严格的匹配，排除错误码）
+    // 方式1: 从URL获取
     const url = this.page.url();
     console.log('当前URL:', url);
-    const tokenMatch = url.match(/[?&]token=(\d{6,})/);  // token通常是6位以上的数字
+    const tokenMatch = url.match(/[?&]token=(\d+)/);
     if (tokenMatch) {
       token = tokenMatch[1];
     }
 
-    // 方式2: 从页面window对象获取
+    // 方式2: 从cookies获取
+    if (!token) {
+      const cookies = await this.page.cookies();
+      const slbCookie = cookies.find(c => c.name === 'slb_wxtoken');
+      if (slbCookie) {
+        token = slbCookie.value;
+      }
+    }
+
+    // 方式3: 从页面脚本内容获取
     if (!token) {
       token = await this.page.evaluate(() => {
-        // 尝试从window对象获取token
+        // 检查window对象
         if (window.wx && window.wx.data && window.wx.data.t) {
           return String(window.wx.data.t);
         }
         if (window.token) {
           return String(window.token);
         }
-        // 尝试从全局变量获取
-        if (typeof window.__INITIAL_STATE__ !== 'undefined') {
-          return window.__INITIAL_STATE__.token || '';
-        }
-        return '';
-      });
-    }
 
-    // 方式3: 从页面脚本内容获取
-    if (!token) {
-      token = await this.page.evaluate(() => {
+        // 检查脚本内容
         const scripts = document.querySelectorAll('script');
         for (const script of scripts) {
           const text = script.textContent || '';
-          // 匹配 token: "123456" 或 t: "123456" 格式
-          const match = text.match(/["']token["']\s*:\s*["']?(\d{6,})/);
+          const match = text.match(/token\s*=\s*["']?(\d+)/);
           if (match) return match[1];
-          const match2 = text.match(/\bt\s*=\s*["'](\d{6,})/);
+          const match2 = text.match(/["']token["']\s*:\s*["']?(\d+)/);
           if (match2) return match2[1];
         }
+
+        // 检查页面HTML中的token
+        const html = document.documentElement.innerHTML;
+        const match3 = html.match(/token=(\d+)/);
+        if (match3) return match3[1];
+
         return '';
       });
     }
 
     if (!token) {
       console.log('页面标题:', await this.page.title());
+      // 尝试打印页面内容帮助调试
+      const pageContent = await this.page.evaluate(() => document.body.innerText.substring(0, 500));
+      console.log('页面内容预览:', pageContent);
       throw new Error('无法获取token，请确保已登录');
     }
 
