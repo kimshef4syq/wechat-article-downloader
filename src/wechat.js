@@ -139,11 +139,26 @@ class WeChatClient {
     const searchUrl = `https://mp.weixin.qq.com/cgi-bin/searchbiz?action=search_biz&query=${encodeURIComponent(accountName)}&count=10&token=${token}&lang=zh_CN&f=json&ajax=1`;
 
     const searchResponse = await this.page.evaluate(async (url) => {
-      const res = await fetch(url, {
-        credentials: 'include',
-      });
-      return res.json();
+      try {
+        const res = await fetch(url, {
+          credentials: 'include',
+        });
+        const text = await res.text();
+        try {
+          return JSON.parse(text);
+        } catch {
+          return { rawText: text };
+        }
+      } catch (e) {
+        return { error: e.message };
+      }
     }, searchUrl);
+
+    console.log('搜索响应:', JSON.stringify(searchResponse, null, 2).substring(0, 500));
+
+    if (searchResponse.error) {
+      throw new Error(`搜索请求失败: ${searchResponse.error}`);
+    }
 
     if (!searchResponse.list || searchResponse.list.length === 0) {
       console.log('未找到该公众号');
