@@ -1,0 +1,24 @@
+{
+  "name": "wechat-article-downloader",
+  "version": "1.0.0",
+  "description": "微信公众号文章下载工具",
+  "main": "src/index.js",
+  "bin": {
+    "wechat-dl": "./src/index.js"
+  },
+  "scripts": {
+    "start": "node src/index.js",
+    "login": "node src/index.js login",
+    "download": "node src/index.js download",
+    "list": "node src/index.js list"
+  },
+  "keywords": ["wechat", "mp", "article", "downloader", "markdown"],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "commander": "^14.0.3",
+    "dotenv": "^17.3.1",
+    "puppeteer": "^24.37.5",
+    "turndown": "^7.2.2"
+  }
+}

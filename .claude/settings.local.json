@@ -1,0 +1,10 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npm init -y)",
+      "Bash(npm install puppeteer turndown commander dotenv)",
+      "Bash(sudo chown -R 501:20 \"/Users/spic005/.npm\")",
+      "Bash(git init && git add . && git status)"
+    ]
+  }
+}
