@@ -14,7 +14,8 @@
       "Bash(git add -A && git commit -m \"$\\(cat <<'EOF'\nrefactor: 使用API方式获取文章列表\n\n- 改用微信公众号后台API直接获取文章列表\n- 不再依赖UI选择器，更稳定可靠\n- 支持分页获取更多文章\n\nCo-Authored-By: Claude Opus 4.6 <noreply@anthropic.com>\nEOF\n\\)\" && git push)",
       "Bash(node /Users/spic005/Documents/cc/tap2/src/index.js download 开源AI项目落地 -n 5)",
       "Bash(git add -A && git commit -m \"$\\(cat <<'EOF'\nfix: 改进token获取逻辑，支持多种方式\n\n- 从URL参数获取\n- 从window对象获取\n- 从页面脚本内容获取\n- 添加调试信息\n\nCo-Authored-By: Claude Opus 4.6 <noreply@anthropic.com>\nEOF\n\\)\" && git push)",
-      "Bash(git add -A && git commit -m \"debug: 添加搜索API响应调试信息\" && git push)"
+      "Bash(git add -A && git commit -m \"debug: 添加搜索API响应调试信息\" && git push)",
+      "Bash(git add -A && git commit -m \"fix: 改进token提取，避免匹配错误码\" && git push)"
     ]
   }
 }

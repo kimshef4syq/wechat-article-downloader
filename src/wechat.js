@@ -74,21 +74,22 @@ class WeChatClient {
 
     console.log(`正在获取公众号 "${accountName}" 的文章列表...`);
 
-    // 先进入公众号管理页面获取token和cookie
+    // 先进入首页获取token
     await this.page.goto(
-      'https://mp.weixin.qq.com/cgi-bin/appmsg?t=media/appmsg_edit_v2&action=init&lang=zh_CN',
+      'https://mp.weixin.qq.com/cgi-bin/home?t=home/index&lang=zh_CN',
       { waitUntil: 'networkidle2' }
     );
 
     // 等待页面加载完成
     await delay(3000);
 
-    // 尝试多种方式获取token
+    // 从URL或页面获取token
     let token = '';
 
-    // 方式1: 从URL获取
+    // 方式1: 从URL获取（更严格的匹配，排除错误码）
     const url = this.page.url();
-    let tokenMatch = url.match(/token=(\d+)/);
+    console.log('当前URL:', url);
+    const tokenMatch = url.match(/[?&]token=(\d{6,})/);  // token通常是6位以上的数字
     if (tokenMatch) {
       token = tokenMatch[1];
     }
@@ -98,36 +99,36 @@ class WeChatClient {
       token = await this.page.evaluate(() => {
         // 尝试从window对象获取token
         if (window.wx && window.wx.data && window.wx.data.t) {
-          return window.wx.data.t;
+          return String(window.wx.data.t);
         }
         if (window.token) {
-          return window.token;
+          return String(window.token);
         }
-        // 尝试从页面内容获取
+        // 尝试从全局变量获取
+        if (typeof window.__INITIAL_STATE__ !== 'undefined') {
+          return window.__INITIAL_STATE__.token || '';
+        }
+        return '';
+      });
+    }
+
+    // 方式3: 从页面脚本内容获取
+    if (!token) {
+      token = await this.page.evaluate(() => {
         const scripts = document.querySelectorAll('script');
         for (const script of scripts) {
           const text = script.textContent || '';
-          const match = text.match(/["']token["']\s*:\s*["']?(\d+)/);
+          // 匹配 token: "123456" 或 t: "123456" 格式
+          const match = text.match(/["']token["']\s*:\s*["']?(\d{6,})/);
           if (match) return match[1];
-          const match2 = text.match(/t\s*=\s*["'](\d+)/);
+          const match2 = text.match(/\bt\s*=\s*["'](\d{6,})/);
           if (match2) return match2[1];
         }
         return '';
       });
     }
 
-    // 方式3: 从当前页面URL的query string获取（重定向后）
     if (!token) {
-      const currentUrl = this.page.url();
-      tokenMatch = currentUrl.match(/token=([^&]+)/);
-      if (tokenMatch) {
-        token = tokenMatch[1];
-      }
-    }
-
-    if (!token) {
-      // 打印调试信息
-      console.log('当前URL:', this.page.url());
       console.log('页面标题:', await this.page.title());
       throw new Error('无法获取token，请确保已登录');
     }
