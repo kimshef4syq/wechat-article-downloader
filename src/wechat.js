@@ -35,24 +35,40 @@ class WeChatClient {
     console.log('等待登录中...(超时时间: 2分钟)');
 
     try {
-      // 登录成功后URL会变化，或者出现特定元素
-      // 使用多种方式检测登录成功
+      // 等待页面跳转到登录后的页面（URL包含token或进入cgi-bin目录）
       await this.page.waitForFunction(
         () => {
-          // URL变为cgi-bin开头表示登录成功
-          if (window.location.href.includes('cgi-bin')) {
+          const url = window.location.href;
+          // 检查URL是否包含token参数
+          if (url.includes('token=') && url.includes('cgi-bin')) {
             return true;
           }
-          // 或者出现账号信息元素
-          const accountEl = document.querySelector('.weui-desktop-account');
-          if (accountEl) return true;
-          // 或者出现头部导航
-          const headerEl = document.querySelector('.weui-desktop-global-header');
-          if (headerEl) return true;
+          // 检查是否有已登录的用户信息
+          const bodyText = document.body.innerText;
+          if (bodyText.includes('请重新登录')) {
+            return false;
+          }
+          // 检查是否有公众号管理界面元素
+          if (document.querySelector('.weui-desktop-account') ||
+              document.querySelector('.weui-desktop-global-header') ||
+              document.querySelector('.main_bd')) {
+            return true;
+          }
           return false;
         },
         { timeout: config.wechat.timeout }
       );
+
+      // 额外等待确保会话建立
+      await delay(2000);
+
+      // 再次确认登录成功
+      const currentUrl = this.page.url();
+      if (!currentUrl.includes('token=') && !currentUrl.includes('cgi-bin')) {
+        console.error('登录后未跳转到正确页面');
+        return false;
+      }
+
       this.isLoggedIn = true;
       console.log('登录成功！');
       return true;
