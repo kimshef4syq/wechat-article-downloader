@@ -50,14 +50,20 @@ program
   .action(async () => {
     const client = new WeChatClient();
     try {
-      await client.login();
-      console.log('登录成功！可以开始下载文章了。');
-      console.log('运行 "node src/index.js download <公众号名称>" 下载文章');
+      const success = await client.login();
+      if (success) {
+        console.log('登录成功！可以开始下载文章了。');
+        console.log('运行 "node src/index.js download <公众号名称>" 下载文章');
+        console.log('按 Ctrl+C 退出');
+      } else {
+        console.error('登录失败，请重试');
+        await client.close();
+        process.exit(1);
+      }
     } catch (error) {
       console.error('登录失败:', error.message);
-    } finally {
-      // 保持浏览器打开，等待用户操作
-      console.log('按 Ctrl+C 退出');
+      await client.close();
+      process.exit(1);
     }
   });
 

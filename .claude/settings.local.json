@@ -4,7 +4,10 @@
       "Bash(npm init -y)",
       "Bash(npm install puppeteer turndown commander dotenv)",
       "Bash(sudo chown -R 501:20 \"/Users/spic005/.npm\")",
-      "Bash(git init && git add . && git status)"
+      "Bash(git init && git add . && git status)",
+      "Bash(gh repo create wechat-article-downloader --public --source=. --remote=origin --push)",
+      "Bash(node /Users/spic005/Documents/cc/tap2/src/index.js login)",
+      "Bash(git add -A && git diff --cached --stat)"
     ]
   }
 }

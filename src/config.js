@@ -5,7 +5,7 @@ module.exports = {
   // 微信公众号后台地址
   wechat: {
     loginUrl: 'https://mp.weixin.qq.com',
-    timeout: 30000, // 登录超时时间（毫秒）
+    timeout: 120000, // 登录超时时间（毫秒），扫码需要足够时间
   },
 
   // 文章保存配置
