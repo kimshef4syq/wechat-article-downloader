@@ -29,13 +29,27 @@ class WeChatClient {
 
     // 等待用户扫码登录
     console.log('请使用微信扫码登录...');
-    console.log('等待登录中...');
+    console.log('等待登录中...(超时时间: 2分钟)');
 
     try {
-      // 等待登录成功的标志（出现用户名或管理界面元素）
-      await this.page.waitForSelector('.weui-desktop-account', {
-        timeout: config.wechat.timeout,
-      });
+      // 登录成功后URL会变化，或者出现特定元素
+      // 使用多种方式检测登录成功
+      await this.page.waitForFunction(
+        () => {
+          // URL变为cgi-bin开头表示登录成功
+          if (window.location.href.includes('cgi-bin')) {
+            return true;
+          }
+          // 或者出现账号信息元素
+          const accountEl = document.querySelector('.weui-desktop-account');
+          if (accountEl) return true;
+          // 或者出现头部导航
+          const headerEl = document.querySelector('.weui-desktop-global-header');
+          if (headerEl) return true;
+          return false;
+        },
+        { timeout: config.wechat.timeout }
+      );
       this.isLoggedIn = true;
       console.log('登录成功！');
       return true;
