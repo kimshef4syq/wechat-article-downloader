@@ -71,73 +71,89 @@ class WeChatClient {
 
     console.log(`正在获取公众号 "${accountName}" 的文章列表...`);
 
-    // 进入素材管理页面
+    // 先进入公众号管理页面获取token和cookie
     await this.page.goto(
       'https://mp.weixin.qq.com/cgi-bin/appmsg?t=media/appmsg_edit_v2&action=init&lang=zh_CN',
       { waitUntil: 'networkidle2' }
     );
 
-    // 点击新建图文 -> 超链接 -> 查找文章
-    // 这里需要根据实际页面结构调整选择器
-    const articles = [];
-
-    // 监听网络请求来获取文章列表API响应
-    const articleListPromise = new Promise((resolve) => {
-      this.page.on('response', async (response) => {
-        if (response.url().includes('appmsgext')) {
-          try {
-            const data = await response.json();
-            if (data.app_msg_list) {
-              resolve(data.app_msg_list);
-            }
-          } catch (e) {
-            // 忽略非JSON响应
-          }
-        }
-      });
-    });
-
-    // 点击"超链接"按钮
-    await this.page.waitForSelector('#js_editor_insert_link', {
-      timeout: 5000,
-    });
-    await this.page.click('#js_editor_insert_link');
-
-    // 等待弹窗出现
-    await this.page.waitForSelector('.weui-desktop-dialog__bd', {
-      timeout: 5000,
-    });
-
-    // 输入公众号名称搜索
-    await this.page.type('.weui-desktop-dialog input', accountName);
-    await this.page.keyboard.press('Enter');
-
-    // 等待搜索结果
+    // 等待页面加载完成
     await this.page.waitForTimeout(2000);
 
-    // 点击搜索结果中的公众号
-    const accountSelector = '.weui-desktop-dialog .search-result__item';
-    await this.page.waitForSelector(accountSelector, { timeout: 5000 });
-    await this.page.click(accountSelector);
+    // 获取cookies用于API请求
+    const cookies = await this.page.cookies();
+    const cookieString = cookies.map((c) => `${c.name}=${c.value}`).join('; ');
 
-    // 等待文章列表加载
-    const articleList = await Promise.race([
-      articleListPromise,
-      this.page.waitForTimeout(5000).then(() => []),
-    ]);
+    // 从URL获取token
+    const url = this.page.url();
+    const tokenMatch = url.match(/token=(\d+)/);
+    const token = tokenMatch ? tokenMatch[1] : '';
 
-    console.log(`找到 ${articleList.length} 篇文章`);
-
-    for (const article of articleList.slice(0, count)) {
-      articles.push({
-        title: article.title,
-        url: article.link,
-        cover: article.cover,
-        createTime: article.create_time,
-        author: article.author,
-      });
+    if (!token) {
+      throw new Error('无法获取token，请确保已登录');
     }
 
+    console.log('正在搜索公众号...');
+
+    // 搜索公众号
+    const searchUrl = `https://mp.weixin.qq.com/cgi-bin/searchbiz?action=search_biz&query=${encodeURIComponent(accountName)}&count=10&token=${token}&lang=zh_CN&f=json&ajax=1`;
+
+    const searchResponse = await this.page.evaluate(async (url) => {
+      const res = await fetch(url, {
+        credentials: 'include',
+      });
+      return res.json();
+    }, searchUrl);
+
+    if (!searchResponse.list || searchResponse.list.length === 0) {
+      console.log('未找到该公众号');
+      return [];
+    }
+
+    // 取第一个匹配的公众号
+    const account = searchResponse.list[0];
+    const fakeid = account.fakeid;
+    console.log(`找到公众号: ${account.nickname} (fakeid: ${fakeid})`);
+
+    // 获取文章列表
+    console.log('正在获取文章列表...');
+    const articles = [];
+    let begin = 0;
+    const perPage = 5; // 每次请求5篇
+
+    while (begin < count) {
+      const listUrl = `https://mp.weixin.qq.com/cgi-bin/appmsg?action=list_ex&begin=${begin}&count=${perPage}&fakeid=${fakeid}&type=9&query=&token=${token}&lang=zh_CN&f=json&ajax=1`;
+
+      const listResponse = await this.page.evaluate(async (url) => {
+        const res = await fetch(url, {
+          credentials: 'include',
+        });
+        return res.json();
+      }, listUrl);
+
+      if (!listResponse.app_msg_list || listResponse.app_msg_list.length === 0) {
+        break;
+      }
+
+      for (const article of listResponse.app_msg_list) {
+        if (articles.length >= count) break;
+        articles.push({
+          title: article.title,
+          url: article.link,
+          cover: article.cover,
+          createTime: article.create_time,
+          author: article.author,
+        });
+      }
+
+      console.log(`已获取 ${articles.length} 篇文章...`);
+      begin += perPage;
+
+      // 添加延迟避免请求过快
+      await this.page.waitForTimeout(1000);
+    }
+
+    console.log(`共找到 ${articles.length} 篇文章`);
     return articles;
   }
 
