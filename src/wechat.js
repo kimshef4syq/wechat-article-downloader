@@ -1,20 +1,138 @@
 const puppeteer = require('puppeteer');
 const config = require('./config');
+const fs = require('fs').promises;
+const path = require('path');
 
-// 延迟函数（替代已废弃的 waitForTimeout）
+// 延迟函数
 const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+// Session文件路径
+const SESSION_FILE = path.join(__dirname, '..', 'data', 'session.json');
 
 class WeChatClient {
   constructor() {
     this.browser = null;
     this.page = null;
     this.isLoggedIn = false;
+    this.token = null;
+  }
+
+  /**
+   * 保存登录会话到文件
+   */
+  async saveSession() {
+    if (!this.page) return;
+
+    const cookies = await this.page.cookies();
+    const url = this.page.url();
+    const tokenMatch = url.match(/token=(\d+)/);
+    const token = tokenMatch ? tokenMatch[1] : this.token;
+
+    const sessionData = {
+      cookies,
+      token,
+      savedAt: new Date().toISOString(),
+    };
+
+    await fs.mkdir(path.dirname(SESSION_FILE), { recursive: true });
+    await fs.writeFile(SESSION_FILE, JSON.stringify(sessionData, null, 2));
+    console.log('会话已保存');
+  }
+
+  /**
+   * 从文件加载登录会话
+   */
+  async loadSession() {
+    try {
+      const data = await fs.readFile(SESSION_FILE, 'utf-8');
+      const sessionData = JSON.parse(data);
+      console.log(`发现已保存的会话 (${sessionData.savedAt})`);
+      return sessionData;
+    } catch {
+      return null;
+    }
+  }
+
+  /**
+   * 检查会话是否有效
+   */
+  async checkSession() {
+    if (!this.page) return false;
+
+    try {
+      // 访问首页检查是否已登录
+      await this.page.goto(
+        'https://mp.weixin.qq.com/cgi-bin/home?t=home/index&lang=zh_CN',
+        { waitUntil: 'networkidle2', timeout: 10000 }
+      );
+
+      await delay(2000);
+
+      const bodyText = await this.page.evaluate(() => document.body.innerText);
+      if (bodyText.includes('请重新登录') || bodyText.includes('登录')) {
+        return false;
+      }
+
+      // 获取token
+      const url = this.page.url();
+      const tokenMatch = url.match(/token=(\d+)/);
+      if (tokenMatch) {
+        this.token = tokenMatch[1];
+        return true;
+      }
+
+      return false;
+    } catch {
+      return false;
+    }
+  }
+
+  /**
+   * 使用已保存的会话恢复登录
+   */
+  async restoreSession() {
+    const session = await this.loadSession();
+    if (!session) {
+      return false;
+    }
+
+    console.log('正在恢复会话...');
+    this.browser = await puppeteer.launch({
+      headless: config.browser.headless,
+      args: ['--no-sandbox', '--disable-setuid-sandbox'],
+    });
+
+    this.page = await this.browser.newPage();
+    await this.page.setViewport({ width: 1280, height: 800 });
+
+    // 设置cookies
+    await this.page.setCookie(...session.cookies);
+
+    // 检查会话是否有效
+    const valid = await this.checkSession();
+
+    if (valid) {
+      this.isLoggedIn = true;
+      this.token = session.token || this.token;
+      console.log('会话恢复成功！Token:', this.token);
+      return true;
+    } else {
+      console.log('会话已过期，需要重新登录');
+      await this.close();
+      return false;
+    }
   }
 
   /**
    * 启动浏览器并登录微信公众号
    */
   async login() {
+    // 先尝试恢复已保存的会话
+    const restored = await this.restoreSession();
+    if (restored) {
+      return true;
+    }
+
     console.log('正在启动浏览器...');
     this.browser = await puppeteer.launch({
       headless: config.browser.headless,
@@ -35,23 +153,19 @@ class WeChatClient {
     console.log('等待登录中...(超时时间: 2分钟)');
 
     try {
-      // 等待页面跳转到登录后的页面（URL包含token或进入cgi-bin目录）
+      // 等待登录成功
       await this.page.waitForFunction(
         () => {
           const url = window.location.href;
-          // 检查URL是否包含token参数
           if (url.includes('token=') && url.includes('cgi-bin')) {
             return true;
           }
-          // 检查是否有已登录的用户信息
           const bodyText = document.body.innerText;
           if (bodyText.includes('请重新登录')) {
             return false;
           }
-          // 检查是否有公众号管理界面元素
           if (document.querySelector('.weui-desktop-account') ||
-              document.querySelector('.weui-desktop-global-header') ||
-              document.querySelector('.main_bd')) {
+              document.querySelector('.weui-desktop-global-header')) {
             return true;
           }
           return false;
@@ -59,18 +173,26 @@ class WeChatClient {
         { timeout: config.wechat.timeout }
       );
 
-      // 额外等待确保会话建立
       await delay(2000);
 
-      // 再次确认登录成功
+      // 获取token
       const currentUrl = this.page.url();
-      if (!currentUrl.includes('token=') && !currentUrl.includes('cgi-bin')) {
-        console.error('登录后未跳转到正确页面');
+      const tokenMatch = currentUrl.match(/token=(\d+)/);
+      if (tokenMatch) {
+        this.token = tokenMatch[1];
+      }
+
+      if (!this.token) {
+        console.error('无法获取token');
         return false;
       }
 
       this.isLoggedIn = true;
-      console.log('登录成功！');
+      console.log('登录成功！Token:', this.token);
+
+      // 保存会话
+      await this.saveSession();
+
       return true;
     } catch (error) {
       console.error('登录超时，请重试');
@@ -80,8 +202,6 @@ class WeChatClient {
 
   /**
    * 获取指定公众号的文章列表
-   * @param {string} accountName - 公众号名称或fakeid
-   * @param {number} count - 获取文章数量
    */
   async getArticleList(accountName, count = 10) {
     if (!this.isLoggedIn) {
@@ -90,99 +210,38 @@ class WeChatClient {
 
     console.log(`正在获取公众号 "${accountName}" 的文章列表...`);
 
-    // 先进入首页获取token
-    await this.page.goto(
-      'https://mp.weixin.qq.com/cgi-bin/home?t=home/index&lang=zh_CN',
-      { waitUntil: 'networkidle2' }
-    );
-
-    // 等待页面加载完成
-    await delay(3000);
-
-    // 从URL或页面获取token
-    let token = '';
-
-    // 方式1: 从URL获取
-    const url = this.page.url();
-    console.log('当前URL:', url);
-    const tokenMatch = url.match(/[?&]token=(\d+)/);
-    if (tokenMatch) {
-      token = tokenMatch[1];
-    }
-
-    // 方式2: 从cookies获取
-    if (!token) {
-      const cookies = await this.page.cookies();
-      const slbCookie = cookies.find(c => c.name === 'slb_wxtoken');
-      if (slbCookie) {
-        token = slbCookie.value;
+    // 如果没有token，从当前页面获取
+    if (!this.token) {
+      const url = this.page.url();
+      const tokenMatch = url.match(/token=(\d+)/);
+      if (tokenMatch) {
+        this.token = tokenMatch[1];
       }
     }
 
-    // 方式3: 从页面脚本内容获取
-    if (!token) {
-      token = await this.page.evaluate(() => {
-        // 检查window对象
-        if (window.wx && window.wx.data && window.wx.data.t) {
-          return String(window.wx.data.t);
-        }
-        if (window.token) {
-          return String(window.token);
-        }
-
-        // 检查脚本内容
-        const scripts = document.querySelectorAll('script');
-        for (const script of scripts) {
-          const text = script.textContent || '';
-          const match = text.match(/token\s*=\s*["']?(\d+)/);
-          if (match) return match[1];
-          const match2 = text.match(/["']token["']\s*:\s*["']?(\d+)/);
-          if (match2) return match2[1];
-        }
-
-        // 检查页面HTML中的token
-        const html = document.documentElement.innerHTML;
-        const match3 = html.match(/token=(\d+)/);
-        if (match3) return match3[1];
-
-        return '';
-      });
+    if (!this.token) {
+      throw new Error('无法获取token');
     }
 
-    if (!token) {
-      console.log('页面标题:', await this.page.title());
-      // 尝试打印页面内容帮助调试
-      const pageContent = await this.page.evaluate(() => document.body.innerText.substring(0, 500));
-      console.log('页面内容预览:', pageContent);
-      throw new Error('无法获取token，请确保已登录');
-    }
-
-    console.log('Token获取成功:', token);
     console.log('正在搜索公众号...');
-
-    // 搜索公众号
-    const searchUrl = `https://mp.weixin.qq.com/cgi-bin/searchbiz?action=search_biz&query=${encodeURIComponent(accountName)}&count=10&token=${token}&lang=zh_CN&f=json&ajax=1`;
+    const searchUrl = `https://mp.weixin.qq.com/cgi-bin/searchbiz?action=search_biz&query=${encodeURIComponent(accountName)}&count=10&token=${this.token}&lang=zh_CN&f=json&ajax=1`;
 
     const searchResponse = await this.page.evaluate(async (url) => {
       try {
-        const res = await fetch(url, {
-          credentials: 'include',
-        });
-        const text = await res.text();
-        try {
-          return JSON.parse(text);
-        } catch {
-          return { rawText: text };
-        }
+        const res = await fetch(url, { credentials: 'include' });
+        return res.json();
       } catch (e) {
         return { error: e.message };
       }
     }, searchUrl);
 
-    console.log('搜索响应:', JSON.stringify(searchResponse, null, 2).substring(0, 500));
-
     if (searchResponse.error) {
       throw new Error(`搜索请求失败: ${searchResponse.error}`);
+    }
+
+    if (searchResponse.base_resp && searchResponse.base_resp.ret !== 0) {
+      console.log('搜索响应:', searchResponse);
+      throw new Error(`API错误: ${searchResponse.base_resp.err_msg || searchResponse.base_resp.ret}`);
     }
 
     if (!searchResponse.list || searchResponse.list.length === 0) {
@@ -190,25 +249,26 @@ class WeChatClient {
       return [];
     }
 
-    // 取第一个匹配的公众号
     const account = searchResponse.list[0];
     const fakeid = account.fakeid;
-    console.log(`找到公众号: ${account.nickname} (fakeid: ${fakeid})`);
+    console.log(`找到公众号: ${account.nickname}`);
 
     // 获取文章列表
     console.log('正在获取文章列表...');
     const articles = [];
     let begin = 0;
-    const perPage = 5; // 每次请求5篇
+    const perPage = 5;
 
     while (begin < count) {
-      const listUrl = `https://mp.weixin.qq.com/cgi-bin/appmsg?action=list_ex&begin=${begin}&count=${perPage}&fakeid=${fakeid}&type=9&query=&token=${token}&lang=zh_CN&f=json&ajax=1`;
+      const listUrl = `https://mp.weixin.qq.com/cgi-bin/appmsg?action=list_ex&begin=${begin}&count=${perPage}&fakeid=${fakeid}&type=9&query=&token=${this.token}&lang=zh_CN&f=json&ajax=1`;
 
       const listResponse = await this.page.evaluate(async (url) => {
-        const res = await fetch(url, {
-          credentials: 'include',
-        });
-        return res.json();
+        try {
+          const res = await fetch(url, { credentials: 'include' });
+          return res.json();
+        } catch {
+          return {};
+        }
       }, listUrl);
 
       if (!listResponse.app_msg_list || listResponse.app_msg_list.length === 0) {
@@ -228,8 +288,6 @@ class WeChatClient {
 
       console.log(`已获取 ${articles.length} 篇文章...`);
       begin += perPage;
-
-      // 添加延迟避免请求过快
       await delay(1000);
     }
 
@@ -238,14 +296,12 @@ class WeChatClient {
   }
 
   /**
-   * 获取文章详情（HTML内容）
-   * @param {string} url - 文章URL
+   * 获取文章详情
    */
   async getArticleContent(url) {
     const articlePage = await this.browser.newPage();
     await articlePage.goto(url, { waitUntil: 'networkidle2' });
 
-    // 获取文章标题和内容
     const content = await articlePage.evaluate(() => {
       const titleEl = document.querySelector('#activity-name');
       const contentEl = document.querySelector('#js_content');

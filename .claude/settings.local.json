@@ -17,7 +17,8 @@
       "Bash(git add -A && git commit -m \"debug: 添加搜索API响应调试信息\" && git push)",
       "Bash(git add -A && git commit -m \"fix: 改进token提取，避免匹配错误码\" && git push)",
       "Bash(git add -A && git commit -m \"fix: 增加从cookies获取token的方式\" && git push)",
-      "Bash(git add -A && git commit -m \"fix: 改进登录检测，确保会话建立完成\" && git push)"
+      "Bash(git add -A && git commit -m \"fix: 改进登录检测，确保会话建立完成\" && git push)",
+      "Bash(git add -A && git commit -m \"$\\(cat <<'EOF'\nfeat: 支持保存和恢复登录会话\n\n- 登录成功后保存cookies和token到本地文件\n- download命令自动尝试恢复已保存的会话\n- 会话过期时提示重新登录\n- 无需每次下载都重新扫码\n\nCo-Authored-By: Claude Opus 4.6 <noreply@anthropic.com>\nEOF\n\\)\" && git push)"
     ]
   }
 }
